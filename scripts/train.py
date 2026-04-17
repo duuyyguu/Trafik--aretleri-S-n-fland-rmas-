@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
 from src.data import DataSpec, build_loaders
@@ -31,6 +33,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--epochs", type=int, default=8)
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--scheduler", default="cosine", choices=["cosine", "none"])
+    p.add_argument("--patience", type=int, default=3, help="Early stopping patience (epochs)")
+    p.add_argument("--min-delta", type=float, default=1e-4, help="Min improvement for early stopping")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--num-workers", type=int, default=0)
     return p.parse_args()
@@ -56,6 +61,9 @@ def main() -> None:
 
     model = build_model(num_classes=num_classes, spec=ModelSpec(args.model)).to(device)
     opt = AdamW(model.parameters(), lr=args.lr)
+    scheduler = None
+    if args.scheduler == "cosine":
+        scheduler = CosineAnnealingLR(opt, T_max=args.epochs)
     loss_fn = nn.CrossEntropyLoss()
 
     info = RunInfo(
@@ -73,6 +81,8 @@ def main() -> None:
 
     best_acc = -1.0
     best_path = Path(run_dir) / "best.pt"
+    epochs_no_improve = 0
+    history = []
 
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -95,7 +105,8 @@ def main() -> None:
             running_loss += loss.item()
             running_acc += acc
             n_batches += 1
-            pbar.set_postfix(loss=running_loss / n_batches, acc=running_acc / n_batches)
+            lr_now = opt.param_groups[0]["lr"]
+            pbar.set_postfix(loss=running_loss / n_batches, acc=running_acc / n_batches, lr=lr_now)
 
         model.eval()
         test_acc = 0.0
@@ -109,11 +120,16 @@ def main() -> None:
                 test_batches += 1
         test_acc /= max(1, test_batches)
 
+        if scheduler is not None:
+            scheduler.step()
+
         ckpt = {
             "model": args.model,
             "num_classes": num_classes,
             "image_size": args.image_size,
             "state_dict": model.state_dict(),
+            "optimizer": opt.state_dict(),
+            "scheduler": scheduler.state_dict() if scheduler is not None else None,
             "epoch": epoch,
             "test_acc": test_acc,
         }
@@ -122,8 +138,32 @@ def main() -> None:
         if test_acc > best_acc:
             best_acc = test_acc
             save_checkpoint(best_path, ckpt)
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
 
-        print(f"epoch={epoch} test_acc={test_acc:.4f} best={best_acc:.4f}")
+        epoch_row = {
+            "epoch": epoch,
+            "train_loss": running_loss / max(1, n_batches),
+            "train_acc": running_acc / max(1, n_batches),
+            "test_acc": test_acc,
+            "best_acc": best_acc,
+            "lr": float(opt.param_groups[0]["lr"]),
+        }
+        history.append(epoch_row)
+        (Path(run_dir) / "history.json").write_text(
+            json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+        print(
+            f"epoch={epoch} train_acc={epoch_row['train_acc']:.4f} "
+            f"test_acc={test_acc:.4f} best={best_acc:.4f} "
+            f"no_improve={epochs_no_improve}/{args.patience}"
+        )
+
+        if epochs_no_improve >= args.patience:
+            print("early stopping triggered")
+            break
 
     latest = Path("runs") / "latest.pt"
     atomic_symlink_or_copy_latest(Path(run_dir), best_path, latest)

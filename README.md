@@ -4,20 +4,20 @@ Bu repo, trafik işareti görüntülerini sınıflandıran bir modeli eğitmek v
 
 ## 3 Kişilik Ekip Görev Dağılımı
 
-### Kişi 1 (Sen) — Proje sahibi / ML pipeline (Sprint-1)
+### Duygu — Proje sahibi / ML pipeline (Sprint-1)
 - Repo iskeleti, çalışma akışı, standartlar
 - Dataset indirme + dataloader
 - Baseline model (transfer learning) eğitimi
-- Değerlendirme metrikleri, confusion matrix
+- Değerlendirme metrikleri, confusion matrix çıktıları
 - Tek komutla eğitim/değerlendirme script’leri
 
-### Kişi 2 — Veri & Ön-işleme / Augmentation
+### Reyhan — Veri & Ön-işleme / Augmentation
 - Hedef dataset seçimi ve sınıf etiket eşlemesi (GTSRB veya dersin verdiği dataset)
 - Veri analizi (sınıf dağılımı, örnek görseller, dengesizlik)
 - Augmentation stratejisi (color jitter, random affine, blur vb.)
 - Eğitim için train/val/test split mantığı ve raporlama
 
-### Kişi 3 — Rapor / Deney tasarımı & iyileştirme
+### Okan — Rapor / Deney tasarımı & iyileştirme
 - Deney planı (baseline vs iyileştirmeler)
 - Hiperparametre araması (lr, batch size, optimizer, scheduler)
 - Model karşılaştırması (ResNet18 vs MobileNetV3 gibi)
@@ -46,13 +46,17 @@ pip install -r requirements.txt
 
 ### Eğitim
 ```bash
-python scripts/train.py --dataset gtsrb --epochs 8 --batch-size 64
+python scripts/train.py --dataset gtsrb --epochs 8 --batch-size 64 --scheduler cosine --patience 3
 ```
 
 ### Değerlendirme
 ```bash
 python scripts/eval.py --dataset gtsrb --ckpt runs/latest.pt
 ```
+
+Değerlendirme sonunda `runs/` altında bir klasöre şu çıktılar kaydedilir:
+- `metrics.json`
+- `confusion_matrix.png`
 
 ### Tahmin
 ```bash
