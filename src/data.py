@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Tuple
+
+import torch
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+
+
+@dataclass(frozen=True)
+class DataSpec:
+    dataset: str
+    data_dir: Path
+    image_size: int = 64
+    batch_size: int = 64
+    num_workers: int = 0
+
+
+def _common_transforms(image_size: int, train: bool) -> transforms.Compose:
+    if train:
+        return transforms.Compose(
+            [
+                transforms.Resize((image_size, image_size)),
+                transforms.RandomApply([transforms.ColorJitter(0.2, 0.2, 0.2, 0.05)], p=0.5),
+                transforms.RandomAffine(degrees=10, translate=(0.05, 0.05), scale=(0.9, 1.1)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ]
+        )
+    return transforms.Compose(
+        [
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
+
+
+def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
+    root = spec.data_dir / "gtsrb"
+    train_ds = datasets.GTSRB(
+        root=str(root),
+        split="train",
+        download=True,
+        transform=_common_transforms(spec.image_size, train=True),
+    )
+    test_ds = datasets.GTSRB(
+        root=str(root),
+        split="test",
+        download=True,
+        transform=_common_transforms(spec.image_size, train=False),
+    )
+
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=spec.batch_size,
+        shuffle=True,
+        num_workers=spec.num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=spec.batch_size,
+        shuffle=False,
+        num_workers=spec.num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+    num_classes = len(train_ds.classes)
+    return train_loader, test_loader, num_classes
+
+
+def build_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
+    ds = spec.dataset.lower()
+    if ds == "gtsrb":
+        return build_gtsrb_loaders(spec)
+    raise ValueError(f"Unknown dataset: {spec.dataset}")
+
