@@ -67,7 +67,23 @@ def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
         num_workers=spec.num_workers,
         pin_memory=torch.cuda.is_available(),
     )
-    num_classes = len(train_ds.classes)
+
+    # Torchvision versions differ: GTSRB may not expose `classes`.
+    if hasattr(train_ds, "classes"):
+        num_classes = len(train_ds.classes)  # type: ignore[attr-defined]
+    elif hasattr(train_ds, "_labels"):
+        labels = getattr(train_ds, "_labels")
+        num_classes = int(max(labels)) + 1
+    elif hasattr(train_ds, "targets"):
+        targets = getattr(train_ds, "targets")
+        num_classes = int(max(targets)) + 1
+    elif hasattr(train_ds, "_samples"):
+        samples = getattr(train_ds, "_samples")
+        num_classes = int(max(lbl for _, lbl in samples)) + 1
+    else:
+        # Official GTSRB has 43 classes.
+        num_classes = 43
+
     return train_loader, test_loader, num_classes
 
 
