@@ -50,7 +50,8 @@ def analyze(data_dir: str = "data") -> None:
     plt.ylabel("Görüntü Sayısı")
     plt.title("GTSRB Sınıf Dağılımı")
     plt.tight_layout()
-    plt.savefig("runs/class_distribution.png", dpi=150)
+    plt.savefig("assets/class_distribution.png", dpi=150)
+    print("\nGrafik kaydedildi: assets/class_distribution.png")
     print("\nGrafik kaydedildi: runs/class_distribution.png")
 
 if __name__ == "__main__":
