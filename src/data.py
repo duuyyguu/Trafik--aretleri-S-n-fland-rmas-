@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Tuple
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 
 
@@ -52,6 +52,10 @@ def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
         download=True,
         transform=_common_transforms(spec.image_size, train=False),
     )
+    # Val split: %80 train, %20 val
+    val_size = int(0.2 * len(train_ds))
+    train_size = len(train_ds) - val_size
+    train_ds, val_ds = random_split(train_ds, [train_size, val_size])
 
     train_loader = DataLoader(
         train_ds,
@@ -67,7 +71,13 @@ def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
         num_workers=spec.num_workers,
         pin_memory=torch.cuda.is_available(),
     )
-
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=spec.batch_size,
+        shuffle=False,
+        num_workers=spec.num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
     # Torchvision versions differ: GTSRB may not expose `classes`.
     if hasattr(train_ds, "classes"):
         num_classes = len(train_ds.classes)  # type: ignore[attr-defined]
@@ -84,7 +94,7 @@ def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
         # Official GTSRB has 43 classes.
         num_classes = 43
 
-    return train_loader, test_loader, num_classes
+    return train_loader, test_loader, val_loader,num_classes
 
 
 def build_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
