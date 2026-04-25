@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple
-
+import collections
 import torch
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, WeightedRandomSampler
 from torchvision import datasets, transforms
 
 
@@ -24,18 +24,20 @@ def _common_transforms(image_size: int, train: bool) -> transforms.Compose:
             [
                 transforms.Resize((image_size, image_size)),
                 transforms.RandomApply([transforms.ColorJitter(0.2, 0.2, 0.2, 0.05)], p=0.5),
-                transforms.RandomAffine(degrees=10, translate=(0.05, 0.05), scale=(0.9, 1.1)),
+                transforms.RandomAffine(degrees=15, translate=(0.05, 0.05), scale=(0.9, 1.1)),
+                transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.3),
+                transforms.ToTensor(),
+                transforms.RandomErasing(p=0.2, scale=(0.02, 0.1)),
+                transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            ]
+        )
+        return transforms.Compose(
+            [
+                transforms.Resize((image_size, image_size)),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ]
         )
-    return transforms.Compose(
-        [
-            transforms.Resize((image_size, image_size)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-        ]
-    )
 
 
 def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
@@ -56,14 +58,19 @@ def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
     val_size = int(0.2 * len(train_ds))
     train_size = len(train_ds) - val_size
     train_ds, val_ds = random_split(train_ds, [train_size, val_size])
-
+    # Az örnekli sınıflara daha fazla ağırlık ver
+    labels = [lbl for _, lbl in train_ds.dataset._samples]
+    labels = [labels[i] for i in train_ds.indices]
+    class_counts = collections.Counter(labels)
+    weights = [1.0 / class_counts[lbl] for lbl in labels]
+    sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
     train_loader = DataLoader(
-        train_ds,
-        batch_size=spec.batch_size,
-        shuffle=True,
-        num_workers=spec.num_workers,
-        pin_memory=torch.cuda.is_available(),
-    )
+            train_ds,
+            batch_size=spec.batch_size,
+            sampler=sampler,
+            num_workers=spec.num_workers,
+            pin_memory=torch.cuda.is_available(),
+        )
     test_loader = DataLoader(
         test_ds,
         batch_size=spec.batch_size,
