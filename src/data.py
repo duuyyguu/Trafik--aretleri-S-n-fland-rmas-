@@ -16,6 +16,8 @@ class DataSpec:
     image_size: int = 64
     batch_size: int = 64
     num_workers: int = 0
+    val_split: float = 0.2
+    seed: int = 42
 
 
 def _common_transforms(image_size: int, train: bool) -> transforms.Compose:
@@ -58,11 +60,13 @@ def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, DataLoa
         download=True,
         transform=_common_transforms(spec.image_size, train=False),
     )
-    # Val split: %80 train, %20 val
-    val_size = int(0.2 * len(train_ds))
+    # Deterministic split keeps Duygu's training pipeline reproducible.
+    val_size = int(spec.val_split * len(train_ds))
     train_size = len(train_ds) - val_size
-    train_ds, val_ds = random_split(train_ds, [train_size, val_size])
+    split_generator = torch.Generator().manual_seed(spec.seed)
+    train_ds, val_ds = random_split(train_ds, [train_size, val_size], generator=split_generator)
     val_ds = Subset(val_base_ds, val_ds.indices)
+    shuffle_generator = torch.Generator().manual_seed(spec.seed)
 
     train_loader = DataLoader(
         train_ds,
@@ -70,6 +74,7 @@ def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, DataLoa
         shuffle=True,
         num_workers=spec.num_workers,
         pin_memory=torch.cuda.is_available(),
+        generator=shuffle_generator,
     )
     test_loader = DataLoader(
         test_ds,

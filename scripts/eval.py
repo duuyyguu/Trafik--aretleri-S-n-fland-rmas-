@@ -30,6 +30,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--image-size", type=int, default=None, help="Override image size stored in checkpoint")
     p.add_argument("--batch-size", type=int, default=128)
     p.add_argument("--num-workers", type=int, default=0)
+    p.add_argument("--val-split", type=float, default=0.2, help="Validation split from train set")
+    p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out-dir", default=None, help="Output directory for eval artifacts")
     p.add_argument("--max-labels", type=int, default=25, help="Max labels to annotate on confusion matrix")
     return p.parse_args()
@@ -56,6 +58,8 @@ def main() -> None:
             image_size=image_size,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
+            val_split=args.val_split,
+            seed=args.seed,
         )
     )
 

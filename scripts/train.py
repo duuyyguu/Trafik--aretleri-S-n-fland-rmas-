@@ -41,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--scheduler", default="cosine", choices=["cosine", "none"])
     p.add_argument("--patience", type=int, default=3, help="Early stopping patience (epochs)")
     p.add_argument("--min-delta", type=float, default=1e-4, help="Min improvement for early stopping")
+    p.add_argument("--val-split", type=float, default=0.2, help="Validation split from train set")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--num-workers", type=int, default=0)
     return p.parse_args()
@@ -61,6 +62,8 @@ def main() -> None:
             image_size=args.image_size,
             batch_size=args.batch_size,
             num_workers=args.num_workers,
+            val_split=args.val_split,
+            seed=args.seed,
         )
     )
 
@@ -79,6 +82,7 @@ def main() -> None:
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
+        val_split=args.val_split,
         seed=args.seed,
         created_utc=now_utc_compact(),
     )
