@@ -18,6 +18,10 @@ from src.modeling import ModelSpec, build_model
 from src.utils import get_device, load_checkpoint
 
 
+SAMPLE_IMAGE_DIR = Path("data/gtsrb/gtsrb/GTSRB/Final_Test/Images")
+SAMPLE_GT_CSV = SAMPLE_IMAGE_DIR / "GT-final_test.csv"
+
+
 def make_transform(image_size: int) -> transforms.Compose:
     return transforms.Compose(
         [
@@ -64,19 +68,37 @@ def predict(image: Image.Image, ckpt_path: str):
     return model_name, top_rows
 
 
-def main() -> None:
-    st.set_page_config(page_title="Trafik Isareti Siniflandirma", page_icon="🚦", layout="wide")
+@st.cache_data
+def load_ground_truth() -> dict[str, int]:
+    if not SAMPLE_GT_CSV.exists():
+        return {}
+    df = pd.read_csv(SAMPLE_GT_CSV, sep=";")
+    return {str(row["Filename"]): int(row["ClassId"]) for _, row in df.iterrows()}
 
-    st.title("Trafik İşareti Sınıflandırma Demo")
+
+def list_demo_images(limit: int = 100) -> list[Path]:
+    if not SAMPLE_IMAGE_DIR.exists():
+        return []
+    return sorted(SAMPLE_IMAGE_DIR.glob("*.ppm"))[:limit]
+
+
+def main() -> None:
+    st.set_page_config(page_title="Trafik Isareti Siniflandirma", layout="wide")
+
+    st.title("GTSRB Trafik İşareti Sınıflandırma Demo")
     st.write(
-        "Bir trafik işareti görseli yükleyin. Model görseli sınıflandırıp en olası sınıfları gösterecek."
+        "Model, GTSRB veri setindeki 43 Alman trafik işareti sınıfını tahmin eder. "
+        "Sunumda en doğru demo için hazır GTSRB test görsellerinden birini seçebilirsiniz."
+    )
+    st.warning(
+        "Not: U dönüşü gibi GTSRB içinde olmayan tabelalar modele öğretilmediği için doğru tahmin edilemez."
     )
 
     ckpt_path = st.sidebar.text_input("Model checkpoint", value="runs/latest.pt")
     st.sidebar.markdown("### Sunum Akışı")
-    st.sidebar.write("1. Görsel yükle")
+    st.sidebar.write("1. Hazır GTSRB test görseli seç")
     st.sidebar.write("2. Model tahminini göster")
-    st.sidebar.write("3. Güven oranını ve top-5 sınıfı açıkla")
+    st.sidebar.write("3. Gerçek sınıf, tahmin ve güven oranını açıkla")
 
     if not Path(ckpt_path).exists():
         st.error(
@@ -85,30 +107,64 @@ def main() -> None:
         )
         return
 
-    uploaded = st.file_uploader("Trafik işareti fotoğrafı yükle", type=["png", "jpg", "jpeg", "ppm"])
+    demo_mode = st.radio(
+        "Demo modu",
+        ["Hazır GTSRB test görseli seç", "Kendi fotoğrafımı yükle"],
+        horizontal=True,
+    )
 
-    if uploaded is None:
-        st.info("Demo için bir trafik işareti fotoğrafı yükleyin.")
-        st.code(
-            'python scripts/predict.py --ckpt runs/latest.pt --image "path/to/image.ppm"',
-            language="powershell",
+    true_label = None
+    source_name = None
+    if demo_mode == "Hazır GTSRB test görseli seç":
+        demo_images = list_demo_images()
+        if not demo_images:
+            st.error("Hazır test görseli bulunamadı. Önce GTSRB datasetinin indirilmiş olduğundan emin olun.")
+            return
+
+        gt = load_ground_truth()
+        selected = st.selectbox(
+            "Test görseli seç",
+            demo_images,
+            format_func=lambda p: p.name,
         )
-        return
+        image = Image.open(selected).convert("RGB")
+        source_name = selected.name
+        if selected.name in gt:
+            true_label = gt[selected.name]
+    else:
+        uploaded = st.file_uploader("Trafik işareti fotoğrafı yükle", type=["png", "jpg", "jpeg", "ppm"])
+        if uploaded is None:
+            st.info("Demo için bir trafik işareti fotoğrafı yükleyin.")
+            st.code(
+                'python scripts/predict.py --ckpt runs/latest.pt --image "path/to/image.ppm"',
+                language="powershell",
+            )
+            return
+        image = Image.open(uploaded).convert("RGB")
+        source_name = uploaded.name
 
-    image = Image.open(uploaded).convert("RGB")
     model_name, top_rows = predict(image, ckpt_path)
     best = top_rows[0]
+    is_correct = true_label is not None and best["Sinif ID"] == true_label
 
     col_img, col_result = st.columns([1, 1])
     with col_img:
         st.subheader("Yüklenen Görsel")
         st.image(image, use_container_width=True)
+        if source_name:
+            st.caption(f"Dosya: {source_name}")
 
     with col_result:
         st.subheader("Model Tahmini")
         st.metric("Tahmin Edilen Sınıf", f"{best['Sinif ID']} - {best['Etiket']}")
         st.metric("Güven Oranı", f"{best['Guven'] * 100:.2f}%")
         st.caption(f"Kullanılan model: {model_name}")
+        if true_label is not None:
+            st.metric("Gerçek Sınıf", f"{true_label} - {get_label(true_label)}")
+            if is_correct:
+                st.success("Tahmin doğru.")
+            else:
+                st.error("Tahmin yanlış. Bu örnek hata analizi için kullanılabilir.")
 
     st.subheader("En Olası 5 Sınıf")
     df = pd.DataFrame(top_rows)
