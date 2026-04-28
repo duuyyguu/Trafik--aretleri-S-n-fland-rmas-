@@ -8,6 +8,7 @@ Bu repo, trafik işareti görüntülerini sınıflandıran bir modeli eğitmek v
 - Repo iskeleti, çalışma akışı, standartlar
 - Dataset indirme + dataloader
 - Baseline model (transfer learning) eğitimi
+- Train/validation/test loader uyumu
 - Değerlendirme metrikleri, confusion matrix çıktıları
 - Tek komutla eğitim/değerlendirme script’leri
 
@@ -25,7 +26,7 @@ Bu repo, trafik işareti görüntülerini sınıflandıran bir modeli eğitmek v
 
 ## Sprint-1 (Başlangıç) Hedefi
 - GTSRB dataset ile çalışan bir baseline kurulum
-- `train.py` ile eğitim, `eval.py` ile test metrikleri
+- `train.py` ile eğitim ve validation takibi, `eval.py` ile test metrikleri
 - `predict.py` ile tek görsel tahmini
 
 > Not: Dersiniz farklı bir dataset veriyorsa `src/data.py` içindeki dataset kısmını uyarlayacağız.

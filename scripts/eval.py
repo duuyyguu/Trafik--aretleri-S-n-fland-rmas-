@@ -49,7 +49,7 @@ def main() -> None:
         or Path("runs") / f"eval_{Path(args.ckpt).stem}_{now_utc_compact()}"
     )
 
-    _, test_loader, _ = build_loaders(
+    _, _, test_loader, _ = build_loaders(
         DataSpec(
             dataset=args.dataset,
             data_dir=Path(args.data_dir),

@@ -54,7 +54,7 @@ def main() -> None:
     run_root = ensure_dir("runs")
     run_dir = ensure_dir(run_root / f"{args.dataset}_{args.model}_{now_utc_compact()}")
 
-    train_loader, test_loader, num_classes = build_loaders(
+    train_loader, val_loader, _test_loader, num_classes = build_loaders(
         DataSpec(
             dataset=args.dataset,
             data_dir=Path(args.data_dir),
@@ -114,16 +114,16 @@ def main() -> None:
             pbar.set_postfix(loss=running_loss / n_batches, acc=running_acc / n_batches, lr=lr_now)
 
         model.eval()
-        test_acc = 0.0
-        test_batches = 0
+        val_acc = 0.0
+        val_batches = 0
         with torch.no_grad():
-            for x, y in tqdm(test_loader, desc="eval"):
+            for x, y in tqdm(val_loader, desc="val"):
                 x = x.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
                 logits = model(x)
-                test_acc += accuracy_top1(logits, y)
-                test_batches += 1
-        test_acc /= max(1, test_batches)
+                val_acc += accuracy_top1(logits, y)
+                val_batches += 1
+        val_acc /= max(1, val_batches)
 
         if scheduler is not None:
             scheduler.step()
@@ -136,12 +136,12 @@ def main() -> None:
             "optimizer": opt.state_dict(),
             "scheduler": scheduler.state_dict() if scheduler is not None else None,
             "epoch": epoch,
-            "test_acc": test_acc,
+            "val_acc": val_acc,
         }
         save_checkpoint(Path(run_dir) / "last.pt", ckpt)
 
-        if test_acc > best_acc:
-            best_acc = test_acc
+        if val_acc > best_acc + args.min_delta:
+            best_acc = val_acc
             save_checkpoint(best_path, ckpt)
             epochs_no_improve = 0
         else:
@@ -151,7 +151,7 @@ def main() -> None:
             "epoch": epoch,
             "train_loss": running_loss / max(1, n_batches),
             "train_acc": running_acc / max(1, n_batches),
-            "test_acc": test_acc,
+            "val_acc": val_acc,
             "best_acc": best_acc,
             "lr": float(opt.param_groups[0]["lr"]),
         }
@@ -162,7 +162,7 @@ def main() -> None:
 
         print(
             f"epoch={epoch} train_acc={epoch_row['train_acc']:.4f} "
-            f"test_acc={test_acc:.4f} best={best_acc:.4f} "
+            f"val_acc={val_acc:.4f} best={best_acc:.4f} "
             f"no_improve={epochs_no_improve}/{args.patience}"
         )
 
