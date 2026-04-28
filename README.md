@@ -79,6 +79,13 @@ Değerlendirme sonunda `runs/` altında bir klasöre şu çıktılar kaydedilir:
 python scripts/predict.py --ckpt runs/latest.pt --image "path/to/image.png"
 ```
 
+### Görsel Web Demo (Sunum İçin)
+```bash
+streamlit run app.py
+```
+
+Bu komut tarayıcıda basit bir arayüz açar. Fotoğraf yükleyerek modelin tahmin ettiği sınıfı, güven oranını ve en olası 5 sınıfı görsel olarak gösterebilirsiniz.
+
 ## Repo Yapısı
 - `scripts/`: CLI script’leri (train/eval/predict)
 - `src/`: ortak kod (data, model, utils)
@@ -93,6 +100,7 @@ Duygu'nun sorumluluğu, modelin uçtan uca çalışmasını sağlayan ML pipelin
 - `scripts/eval.py`: test seti değerlendirmesi, `metrics.json` ve `confusion_matrix.png` üretimi
 - `scripts/predict.py`: tek görsel üzerinde sınıf tahmini
 - `scripts/plot_history.py`: eğitim süreci için accuracy/loss grafikleri
+- `app.py`: sunum için fotoğraf yüklemeli web demo arayüzü
 
 Okan rapor kısmında `runs/` çıktılarındaki `history.json`, `metrics.json`, `accuracy_curve.png`, `loss_curve.png` ve `confusion_matrix.png` dosyalarını kullanabilir.
 
