@@ -54,7 +54,7 @@ def main() -> None:
     run_root = ensure_dir("runs")
     run_dir = ensure_dir(run_root / f"{args.dataset}_{args.model}_{now_utc_compact()}")
 
-    train_loader, test_loader, num_classes = build_loaders(
+    train_loader, val_loader, test_loader, num_classes = build_loaders(
         DataSpec(
             dataset=args.dataset,
             data_dir=Path(args.data_dir),
