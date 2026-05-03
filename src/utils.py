@@ -40,6 +40,7 @@ class RunInfo:
     epochs: int
     batch_size: int
     lr: float
+    val_split: float
     seed: int
     created_utc: str
 

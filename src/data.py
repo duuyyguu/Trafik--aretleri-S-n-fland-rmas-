@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Tuple
 import collections
 import torch
-from torch.utils.data import DataLoader, random_split, WeightedRandomSampler
+from torch.utils.data import DataLoader, Subset, random_split, WeightedRandomSampler
 from torchvision import datasets, transforms
 
 
@@ -16,6 +16,8 @@ class DataSpec:
     image_size: int = 64
     batch_size: int = 64
     num_workers: int = 0
+    val_split: float = 0.2
+    seed: int = 42
 
 
 def _common_transforms(image_size: int, train: bool) -> transforms.Compose:
@@ -31,16 +33,16 @@ def _common_transforms(image_size: int, train: bool) -> transforms.Compose:
                 transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ]
         )
-        return transforms.Compose(
-            [
-                transforms.Resize((image_size, image_size)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            ]
-        )
+    return transforms.Compose(
+        [
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
 
 
-def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
+def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, DataLoader, int]:
     root = spec.data_dir / "gtsrb"
     train_ds = datasets.GTSRB(
         root=str(root),
@@ -48,33 +50,36 @@ def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
         download=True,
         transform=_common_transforms(spec.image_size, train=True),
     )
+    val_base_ds = datasets.GTSRB(
+        root=str(root),
+        split="train",
+        download=True,
+        transform=_common_transforms(spec.image_size, train=False),
+    )
     test_ds = datasets.GTSRB(
         root=str(root),
         split="test",
         download=True,
         transform=_common_transforms(spec.image_size, train=False),
     )
-    # Val split: %80 train, %20 val
-    val_size = int(0.2 * len(train_ds))
+
+    val_size = int(spec.val_split * len(train_ds))
     train_size = len(train_ds) - val_size
-    train_ds, val_ds = random_split(train_ds, [train_size, val_size])
+    split_generator = torch.Generator().manual_seed(spec.seed)
+    train_ds, val_ds = random_split(train_ds, [train_size, val_size], generator=split_generator)
+    val_ds = Subset(val_base_ds, val_ds.indices)
+
     # Az örnekli sınıflara daha fazla ağırlık ver
     labels = [lbl for _, lbl in train_ds.dataset._samples]
     labels = [labels[i] for i in train_ds.indices]
     class_counts = collections.Counter(labels)
     weights = [1.0 / class_counts[lbl] for lbl in labels]
     sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+
     train_loader = DataLoader(
-            train_ds,
-            batch_size=spec.batch_size,
-            sampler=sampler,
-            num_workers=spec.num_workers,
-            pin_memory=torch.cuda.is_available(),
-        )
-    test_loader = DataLoader(
-        test_ds,
+        train_ds,
         batch_size=spec.batch_size,
-        shuffle=False,
+        sampler=sampler,
         num_workers=spec.num_workers,
         pin_memory=torch.cuda.is_available(),
     )
@@ -85,28 +90,34 @@ def build_gtsrb_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
         num_workers=spec.num_workers,
         pin_memory=torch.cuda.is_available(),
     )
-    # Torchvision versions differ: GTSRB may not expose `classes`.
-    if hasattr(train_ds, "classes"):
-        num_classes = len(train_ds.classes)  # type: ignore[attr-defined]
-    elif hasattr(train_ds, "_labels"):
-        labels = getattr(train_ds, "_labels")
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=spec.batch_size,
+        shuffle=False,
+        num_workers=spec.num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+
+    base_train_ds = train_ds.dataset
+    if hasattr(base_train_ds, "classes"):
+        num_classes = len(base_train_ds.classes)
+    elif hasattr(base_train_ds, "_labels"):
+        labels = getattr(base_train_ds, "_labels")
         num_classes = int(max(labels)) + 1
-    elif hasattr(train_ds, "targets"):
-        targets = getattr(train_ds, "targets")
+    elif hasattr(base_train_ds, "targets"):
+        targets = getattr(base_train_ds, "targets")
         num_classes = int(max(targets)) + 1
-    elif hasattr(train_ds, "_samples"):
-        samples = getattr(train_ds, "_samples")
+    elif hasattr(base_train_ds, "_samples"):
+        samples = getattr(base_train_ds, "_samples")
         num_classes = int(max(lbl for _, lbl in samples)) + 1
     else:
-        # Official GTSRB has 43 classes.
         num_classes = 43
 
-    return train_loader, test_loader, val_loader,num_classes
+    return train_loader, val_loader, test_loader, num_classes
 
 
-def build_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, int]:
+def build_loaders(spec: DataSpec) -> Tuple[DataLoader, DataLoader, DataLoader, int]:
     ds = spec.dataset.lower()
     if ds == "gtsrb":
         return build_gtsrb_loaders(spec)
     raise ValueError(f"Unknown dataset: {spec.dataset}")
-

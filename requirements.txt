@@ -6,6 +6,7 @@ matplotlib>=3.8
 seaborn>=0.13
 scikit-learn>=1.4
 opencv-python>=4.9
+streamlit>=1.35
 
 # Deep learning
 torch>=2.2
